@@ -1,0 +1,6 @@
+{
+  "name": "UPSC Test Copy Evaluator",
+  "description": "Multi-pass UPSC Mains copy evaluation system with margin teacher annotations, model answer benchmarking, editable FreeText PDF export, and customizable evaluator prompts.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
