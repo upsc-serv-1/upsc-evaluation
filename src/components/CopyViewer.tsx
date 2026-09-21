@@ -386,7 +386,7 @@ export const CopyViewer: React.FC<CopyViewerProps> = ({
 
                 {/* Ruled Lines Container */}
                 <div className="ml-[14%] mr-[19%] space-y-3 font-serif">
-                  {currentPage.studentLines.map((line, idx) => (
+                  {(currentPage?.studentLines || []).map((line, idx) => (
                     <div 
                       key={idx} 
                       className="relative group border-b border-blue-100/80 pb-1 min-h-[26px] flex items-baseline justify-between"
@@ -398,7 +398,7 @@ export const CopyViewer: React.FC<CopyViewerProps> = ({
                   ))}
 
                   {/* Hand-drawn diagram representation */}
-                  {currentPage.diagramLabel && (
+                  {currentPage?.diagramLabel && (
                     <div className="my-6 p-4 rounded border-2 border-dashed border-slate-300 bg-slate-50/70 text-center">
                       <div className="inline-block p-2 rounded bg-white shadow-sm border border-slate-200">
                         <span className="text-[11px] font-sans font-medium text-slate-700">
@@ -412,7 +412,7 @@ export const CopyViewer: React.FC<CopyViewerProps> = ({
 
               {/* UPSC Specimen Footer */}
               <div className="absolute bottom-3 left-0 right-0 text-center text-[9px] text-slate-400 font-serif border-t border-slate-100 pt-1 z-0">
-                Specimen Answer Booklet - LevelUp Mentorship Program • Page {currentPage.pageNumber}
+                Specimen Answer Booklet - LevelUp Mentorship Program • Page {currentPage?.pageNumber || 1}
               </div>
             </>
           )}

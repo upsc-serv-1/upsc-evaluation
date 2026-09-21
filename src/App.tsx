@@ -68,6 +68,13 @@ export default function App() {
   const [currentPassStep, setCurrentPassStep] = useState<number>(1);
   const [isExportingPdf, setIsExportingPdf] = useState<boolean>(false);
   const [zoomLevel, setZoomLevel] = useState<number>(100);
+  const [isCustomCopy, setIsCustomCopy] = useState<boolean>(false);
+  const [batchProgress, setBatchProgress] = useState<{ isRunning: boolean; currentPage: number; totalPages: number }>({
+    isRunning: false,
+    currentPage: 0,
+    totalPages: 0,
+  });
+  const stopBatchRef = React.useRef<boolean>(false);
 
   // Annotation Checkmark & Cross display toggles with persistence
   const [showTicks, setShowTicks] = useState<boolean>(() => {
@@ -283,9 +290,13 @@ export default function App() {
   };
 
   // PASS 1: Extraction & Ground Truth OCR
-  const handleRunPass1 = async (): Promise<any> => {
-    const qText = currentQuestion?.questionText || currentPage.title || "UPSC Question";
-    const studentText = currentPage.studentLines.join("\n");
+  const handleRunPass1 = async (targetPage?: BookletPageData, targetQuestion?: QuestionBreakdown): Promise<any> => {
+    const activePage = targetPage || pages[currentPageIndex] || pages[0];
+    const activeQNumber = activePage?.questionNumber || 1;
+    const activeQuestion = targetQuestion || questionsList.find(q => q.qNumber === activeQNumber) || questionsList[0] || SAMPLE_QUESTIONS[0];
+
+    const qText = activeQuestion?.questionText || activePage?.title || "UPSC Question";
+    const studentText = (activePage?.studentLines || []).join("\n");
 
     updatePassStatus(1, { status: 'running', errorMessage: undefined });
     setCurrentPassStep(1);
@@ -298,7 +309,7 @@ export default function App() {
         body: JSON.stringify({ 
           questionText: qText, 
           studentContent: studentText,
-          imageBase64: currentPage.imageBase64,
+          imageBase64: activePage?.imageBase64,
           apiConfig,
         }),
       });
@@ -309,8 +320,43 @@ export default function App() {
       }
 
       const resData = await res.json();
-      const pass1Data = resData.data || { extractedText: studentText, bulletPoints: currentPage.studentLines };
+      const pass1Data = resData.data || { extractedText: studentText, bulletPoints: activePage?.studentLines || [] };
       setCachedPass1(pass1Data);
+
+      // Dynamically update question text, number, and marks if detected from this page
+      if (pass1Data.detectedQuestion && pass1Data.detectedQuestion.trim()) {
+        const qNum = pass1Data.detectedQuestionNumber || activeQNumber;
+        const marks = pass1Data.detectedMaxMarks || activeQuestion?.maxMarks || 10;
+
+        setPages(prev => prev.map((p, idx) => {
+          const isTarget = targetPage ? p.pageNumber === targetPage.pageNumber : idx === currentPageIndex;
+          if (!isTarget) return p;
+          return {
+            ...p,
+            questionNumber: qNum,
+            questionText: pass1Data.detectedQuestion,
+            maxMarks: marks,
+            title: `Q${qNum} (${marks}M): ${pass1Data.detectedQuestion.slice(0, 35)}...`,
+          };
+        }));
+
+        setQuestionsList(prev => {
+          const existing = prev.find(q => q.qNumber === qNum);
+          if (existing) {
+            return prev.map(q => q.qNumber === qNum ? { ...q, questionText: pass1Data.detectedQuestion, maxMarks: marks } : q);
+          } else {
+            return [...prev, {
+              qNumber: qNum,
+              questionText: pass1Data.detectedQuestion,
+              maxMarks: marks,
+              coreDirectives: ['Analyze', 'Explain', 'Discuss'],
+              subDemands: [],
+              modelAnswerSummary: activeQuestion?.modelAnswerSummary || '',
+              modelAnswerKeyPoints: activeQuestion?.modelAnswerKeyPoints || [],
+            }];
+          }
+        });
+      }
 
       updatePassStatus(1, {
         status: 'completed',
@@ -331,10 +377,14 @@ export default function App() {
   };
 
   // PASS 2: Gap Analysis & Model Answer Benchmarking
-  const handleRunPass2 = async (inputPass1?: any): Promise<any> => {
-    const qText = currentQuestion?.questionText || currentPage.title || "UPSC Question";
-    const modelAnswer = currentQuestion?.modelAnswerSummary || (currentQuestion?.modelAnswerKeyPoints || []).join("\n") || "";
-    const p1 = inputPass1 || cachedPass1 || { extractedText: currentPage.studentLines.join("\n") };
+  const handleRunPass2 = async (inputPass1?: any, targetPage?: BookletPageData, targetQuestion?: QuestionBreakdown): Promise<any> => {
+    const activePage = targetPage || pages[currentPageIndex] || pages[0];
+    const activeQNumber = activePage?.questionNumber || 1;
+    const activeQuestion = targetQuestion || questionsList.find(q => q.qNumber === activeQNumber) || questionsList[0] || SAMPLE_QUESTIONS[0];
+
+    const qText = activeQuestion?.questionText || activePage?.title || "UPSC Question";
+    const modelAnswer = activeQuestion?.modelAnswerSummary || (activeQuestion?.modelAnswerKeyPoints || []).join("\n") || "";
+    const p1 = inputPass1 || cachedPass1 || { extractedText: (activePage?.studentLines || []).join("\n") };
 
     updatePassStatus(2, { status: 'running', errorMessage: undefined });
     setCurrentPassStep(2);
@@ -389,9 +439,13 @@ export default function App() {
   };
 
   // PASS 3: Human Teacher Margin Annotations Placement
-  const handleRunPass3 = async (inputPass1?: any, inputPass2?: any): Promise<any> => {
-    const qText = currentQuestion?.questionText || currentPage.title || "UPSC Question";
-    const p1 = inputPass1 || cachedPass1 || { extractedText: currentPage.studentLines.join("\n") };
+  const handleRunPass3 = async (inputPass1?: any, inputPass2?: any, targetPage?: BookletPageData, targetQuestion?: QuestionBreakdown): Promise<any> => {
+    const activePage = targetPage || pages[currentPageIndex] || pages[0];
+    const activeQNumber = activePage?.questionNumber || 1;
+    const activeQuestion = targetQuestion || questionsList.find(q => q.qNumber === activeQNumber) || questionsList[0] || SAMPLE_QUESTIONS[0];
+
+    const qText = activeQuestion?.questionText || activePage?.title || "UPSC Question";
+    const p1 = inputPass1 || cachedPass1 || { extractedText: (activePage?.studentLines || []).join("\n") };
     const p2 = inputPass2 || cachedPass2 || { strengths: evaluation.strengths, conceptualErrors: evaluation.conceptualErrors };
 
     updatePassStatus(3, { status: 'running', errorMessage: undefined });
@@ -420,11 +474,12 @@ export default function App() {
       const pass3Data = resData.data;
       setCachedPass3(pass3Data);
 
-      // Render annotations onto the current page
+      // Render annotations onto the target page
       if (pass3Data?.annotations && pass3Data.annotations.length > 0) {
+        const targetIdx = targetPage ? (targetPage.pageNumber - 1) : currentPageIndex;
         const formattedAnnots: AnnotationItem[] = pass3Data.annotations.map((a: any, idx: number) => ({
           id: `ai-${Date.now()}-${idx}`,
-          pageIndex: currentPageIndex,
+          pageIndex: targetIdx,
           xPercent: a.xPercent || 82,
           yPercent: a.yPercent || (15 + idx * 15),
           widthPercent: a.widthPercent || 16,
@@ -437,7 +492,8 @@ export default function App() {
 
         setPages(prevPages =>
           prevPages.map((pg, pIdx) => {
-            if (pIdx !== currentPageIndex) return pg;
+            const isMatch = targetPage ? pg.pageNumber === targetPage.pageNumber : pIdx === currentPageIndex;
+            if (!isMatch) return pg;
             return {
               ...pg,
               annotations: formattedAnnots,
@@ -453,10 +509,10 @@ export default function App() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             questionText: qText,
-            studentContent: currentPage.studentLines.join("\n"),
+            studentContent: (activePage?.studentLines || []).join("\n"),
             pass1Data: p1,
             pass2Data: p2,
-            annotations: pass3Data?.annotations || currentPage.annotations,
+            annotations: pass3Data?.annotations || activePage?.annotations || [],
             promptSettings,
             apiConfig,
           }),
@@ -488,11 +544,23 @@ export default function App() {
   };
 
   // PASS 4: Objective Marking & Scorecard Synthesis
-  const handleRunPass4 = async (inputPass1?: any, inputPass2?: any, inputPass3?: any): Promise<any> => {
-    const qText = currentQuestion?.questionText || currentPage.title || "UPSC Question";
-    const p1 = inputPass1 || cachedPass1 || { extractedText: currentPage.studentLines.join("\n") };
+  const handleRunPass4 = async (
+    inputPass1?: any, 
+    inputPass2?: any, 
+    inputPass3?: any, 
+    targetPage?: BookletPageData, 
+    targetQuestion?: QuestionBreakdown, 
+    targetCandidateName?: string
+  ): Promise<any> => {
+    const activePage = targetPage || pages[currentPageIndex] || pages[0];
+    const activeQNumber = activePage?.questionNumber || 1;
+    const activeQuestion = targetQuestion || questionsList.find(q => q.qNumber === activeQNumber) || questionsList[0] || SAMPLE_QUESTIONS[0];
+
+    const qText = activeQuestion?.questionText || activePage?.title || "UPSC Question";
+    const p1 = inputPass1 || cachedPass1 || { extractedText: (activePage?.studentLines || []).join("\n") };
     const p2 = inputPass2 || cachedPass2 || { strengths: evaluation.strengths, conceptualErrors: evaluation.conceptualErrors };
-    const p3 = inputPass3 || cachedPass3 || { annotations: currentPage.annotations };
+    const p3 = inputPass3 || cachedPass3 || { annotations: activePage?.annotations || [] };
+    const candidateName = targetCandidateName || scorecard.candidateName || 'Candidate';
 
     updatePassStatus(4, { status: 'running', errorMessage: undefined });
     setCurrentPassStep(4);
@@ -504,11 +572,11 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           questionText: qText,
-          maxMarks: currentQuestion?.maxMarks || 10,
+          maxMarks: activeQuestion?.maxMarks || 10,
           pass1Data: p1,
           pass2Data: p2,
           pass3Data: p3,
-          candidateName: scorecard.candidateName,
+          candidateName,
           apiConfig,
         }),
       });
@@ -530,27 +598,35 @@ export default function App() {
           mentorSummary: pass4Data.mentorOverallFeedback || prev.mentorSummary,
         }));
 
-        if (pass4Data.parameters) {
-          setScorecard(prev => ({
-            ...prev,
-            parameters: {
-              ...prev.parameters,
-              ...pass4Data.parameters,
-            },
-            totalMarksAwarded: pass4Data.marksAwarded,
-            questionWiseMarks: prev.questionWiseMarks.map(q => 
-              q.qNumber === currentQNumber 
-                ? { ...q, marksAwarded: pass4Data.marksAwarded }
-                : q
-            ),
-          }));
+        if (pass4Data.parameters || pass4Data.marksAwarded) {
+          setScorecard(prev => {
+            const existingMarks = prev.questionWiseMarks || [];
+            const exists = existingMarks.some(q => q.qNumber === activeQNumber);
+            const updatedQuestionMarks = exists
+              ? existingMarks.map(q => q.qNumber === activeQNumber ? { ...q, marksObtained: pass4Data.marksAwarded, comment: pass4Data.mentorOverallFeedback || 'Evaluated' } : q)
+              : [...existingMarks, {
+                  qNumber: activeQNumber,
+                  maxMarks: activeQuestion?.maxMarks || 10,
+                  marksObtained: pass4Data.marksAwarded,
+                  comment: pass4Data.mentorOverallFeedback || 'Evaluated',
+                }];
+
+            const sumAwarded = updatedQuestionMarks.reduce((acc, q) => acc + (q.marksObtained || 0), 0);
+
+            return {
+              ...prev,
+              parameters: pass4Data.parameters ? { ...prev.parameters, ...pass4Data.parameters } : prev.parameters,
+              totalMarksAwarded: sumAwarded,
+              questionWiseMarks: updatedQuestionMarks,
+            };
+          });
         }
       }
 
       updatePassStatus(4, {
         status: 'completed',
         durationMs: Date.now() - start,
-        summary: `Awarded ${pass4Data.marksAwarded || evaluation.marksAwarded}/${currentQuestion?.maxMarks || 10} marks with LevelUp Mentorship scorecard.`,
+        summary: `Awarded ${pass4Data.marksAwarded || evaluation.marksAwarded}/${activeQuestion?.maxMarks || 10} marks with LevelUp Mentorship scorecard.`,
         data: pass4Data,
       });
 
@@ -566,18 +642,64 @@ export default function App() {
   };
 
   // FULL MULTI-PASS PIPELINE (runs 1 -> 2 -> 3 -> 4 seamlessly)
-  const handleRunMultiPass = async () => {
+  const handleRunMultiPass = async (targetPage?: BookletPageData, targetQuestion?: QuestionBreakdown, targetCandidateName?: string) => {
     setIsEvaluating(true);
     try {
-      const p1 = await handleRunPass1();
-      const p2 = await handleRunPass2(p1);
-      const p3 = await handleRunPass3(p1, p2);
-      await handleRunPass4(p1, p2, p3);
+      const p1 = await handleRunPass1(targetPage, targetQuestion);
+      const p2 = await handleRunPass2(p1, targetPage, targetQuestion);
+      const p3 = await handleRunPass3(p1, p2, targetPage, targetQuestion);
+      await handleRunPass4(p1, p2, p3, targetPage, targetQuestion, targetCandidateName);
     } catch (pipelineErr) {
       console.warn("Pipeline halted at step due to error. Individual step can be retried:", pipelineErr);
     } finally {
       setIsEvaluating(false);
     }
+  };
+
+  // Stop batch evaluation in progress
+  const handleStopBatch = () => {
+    stopBatchRef.current = true;
+    setBatchProgress(prev => ({ ...prev, isRunning: false }));
+  };
+
+  // Sequentially evaluate all pages in the test booklet
+  const handleEvaluateAllPages = async (targetPagesList?: BookletPageData[]) => {
+    const pagesToEvaluate = targetPagesList || pages;
+    if (!pagesToEvaluate || pagesToEvaluate.length === 0) return;
+
+    stopBatchRef.current = false;
+    setBatchProgress({
+      isRunning: true,
+      currentPage: 1,
+      totalPages: pagesToEvaluate.length,
+    });
+
+    for (let i = 0; i < pagesToEvaluate.length; i++) {
+      if (stopBatchRef.current) {
+        console.log("Batch evaluation cancelled by user.");
+        break;
+      }
+
+      setCurrentPageIndex(i);
+      setBatchProgress({
+        isRunning: true,
+        currentPage: i + 1,
+        totalPages: pagesToEvaluate.length,
+      });
+
+      const page = pagesToEvaluate[i];
+      try {
+        await handleRunMultiPass(page);
+      } catch (err) {
+        console.warn(`Error evaluating page ${i + 1}:`, err);
+      }
+    }
+
+    setBatchProgress({
+      isRunning: false,
+      currentPage: pagesToEvaluate.length,
+      totalPages: pagesToEvaluate.length,
+    });
   };
 
   // Export PDF with standard ISO FreeText annotations AND original copy background overlay
@@ -619,17 +741,60 @@ export default function App() {
     }
   };
 
+  // Switch back to sample copy
+  const handleLoadSampleCopy = () => {
+    setIsCustomCopy(false);
+    setPages(SAMPLE_PAGES);
+    setCurrentPageIndex(2); // Jump to Q1
+    setQuestionsList(SAMPLE_QUESTIONS);
+    setScorecard(SAMPLE_SCORECARD);
+    setEvaluation(SAMPLE_EVALUATION_Q1);
+    setCachedPass1({
+      extractedText: "Student handwritten text on Jet Streams and Western Disturbances.",
+      bulletPoints: ["Tropopause inversion", "Subtropical westerly jet", "Coriolis force"],
+      headingsIdentified: ["Mechanism of Jet Stream", "Role of Western Disturbance"],
+    });
+    setCachedPass2(null);
+    setCachedPass3(null);
+    setAgentAudit({
+      agentDialogue: [
+        {
+          agent: "Agent 1: Ground Truth Verifier",
+          message: "Cross-checked student lines against proposed notes. Verified: student never mentioned vertical wind shear in Q1, but mistakenly said 'convection maximizes at tropopause'. Flagged note for correction."
+        },
+        {
+          agent: "Agent 2: Subject Specialist",
+          message: "Affirmed. Convection is capped by tropopause inversion. Additionally, student omitted the thermal wind relationship. Approved teacher margin note."
+        },
+        {
+          agent: "Agent 3: Chief Moderator",
+          message: "Agreed. Comments approved in crisp teacher tone with red pen formatting. Score capped at 4.0/10 in accordance with standard UPSC marking pattern."
+        }
+      ],
+      issuesFound: true,
+      revisionsRecommended: [
+        "Ensure student's claim on convection is marked with correction ✗",
+        "Demands missed highlighted at top banner"
+      ],
+      consensusStatus: "APPROVED_WITH_CORRECTIONS"
+    });
+  };
+
   // Jump to sample question
   const handleSelectSampleQuestion = (qNum: number) => {
-    const targetPage = pages.find(p => p.questionNumber === qNum);
+    if (isCustomCopy || pages.length !== SAMPLE_PAGES.length) {
+      handleLoadSampleCopy();
+    }
+    const targetPage = SAMPLE_PAGES.find(p => p.questionNumber === qNum);
     if (targetPage) {
-      const idx = pages.indexOf(targetPage);
+      const idx = SAMPLE_PAGES.indexOf(targetPage);
       setCurrentPageIndex(idx);
     }
   };
 
   // Custom evaluation initiation with uploaded PDF pages or image
   const handleStartCustomEvaluation = (payload: {
+    candidateName?: string;
     questionText: string;
     maxMarks: number;
     modelAnswer: string;
@@ -637,9 +802,10 @@ export default function App() {
     imageBase64?: string;
     pagesList?: { pageNumber: number; dataUrl: string }[];
   }) => {
-    const newQNumber = questionsList.length + 1;
+    setIsCustomCopy(true);
+    const candidateName = payload.candidateName?.trim() || 'Candidate Copy';
     const newQuestionBreakdown: QuestionBreakdown = {
-      qNumber: newQNumber,
+      qNumber: 1,
       questionText: payload.questionText,
       maxMarks: payload.maxMarks,
       coreDirectives: ['Analyze', 'Explain', 'Discuss'],
@@ -657,56 +823,101 @@ export default function App() {
           weightage: 40,
         }
       ],
-      modelAnswerKeyPoints: payload.modelAnswer.split('\n').filter(Boolean),
+      modelAnswerKeyPoints: payload.modelAnswer ? payload.modelAnswer.split('\n').filter(Boolean) : [],
       modelAnswerSummary: payload.modelAnswer,
     };
 
-    setQuestionsList(prev => [...prev, newQuestionBreakdown]);
+    const isMultiPage = !!(payload.pagesList && payload.pagesList.length > 1);
+    const initialTotalMarks = isMultiPage ? 250 : (payload.maxMarks || 10);
 
+    let createdPages: BookletPageData[] = [];
     if (payload.pagesList && payload.pagesList.length > 0) {
-      const createdPages: BookletPageData[] = payload.pagesList.map((pg, idx) => ({
-        pageNumber: pages.length + idx + 1,
-        questionNumber: newQNumber,
-        questionText: payload.questionText,
-        maxMarks: payload.maxMarks,
-        title: `${payload.questionText.slice(0, 45)}... (Page ${idx + 1})`,
+      createdPages = payload.pagesList.map((pg, idx) => ({
+        pageNumber: idx + 1,
+        questionNumber: idx === 0 ? 1 : undefined,
+        title: `Page ${idx + 1} of ${payload.pagesList!.length}`,
         imageBase64: pg.dataUrl,
-        studentLines: payload.studentContent 
-          ? payload.studentContent.split("\n").filter(Boolean)
-          : [
-              `Original uploaded candidate copy page ${pg.pageNumber}.`,
-              "Rendered 1:1 behind margins.",
-            ],
-        annotations: [],
-      }));
-
-      const newPageIndex = pages.length;
-      setPages(prev => [...prev, ...createdPages]);
-      setCurrentPageIndex(newPageIndex);
-      setTimeout(() => {
-        handleRunMultiPass();
-      }, 200);
-    } else {
-      const newPage: BookletPageData = {
-        pageNumber: pages.length + 1,
-        questionNumber: newQNumber,
-        questionText: payload.questionText,
-        maxMarks: payload.maxMarks,
-        title: payload.questionText.slice(0, 50) + "...",
-        imageBase64: payload.imageBase64,
-        studentLines: payload.studentContent ? payload.studentContent.split("\n") : [
-          "Original candidate copy submitted for evaluation.",
+        studentLines: [
+          `Candidate answer copy page ${idx + 1}.`,
         ],
         annotations: [],
-      };
-
-      const newPageIndex = pages.length;
-      setPages(prev => [...prev, newPage]);
-      setCurrentPageIndex(newPageIndex);
-      setTimeout(() => {
-        handleRunMultiPass();
-      }, 200);
+      }));
+    } else {
+      createdPages = [{
+        pageNumber: 1,
+        questionNumber: 1,
+        questionText: payload.questionText,
+        maxMarks: payload.maxMarks || 10,
+        title: "Page 1",
+        imageBase64: payload.imageBase64,
+        studentLines: payload.studentContent ? payload.studentContent.split("\n") : [
+          "Candidate copy submitted for evaluation.",
+        ],
+        annotations: [],
+      }];
     }
+
+    // Set new active copy: replace old pages with the user's uploaded copy
+    setQuestionsList([newQuestionBreakdown]);
+    setPages(createdPages);
+    setCurrentPageIndex(0);
+
+    // Reset scorecard completely for this candidate
+    setScorecard({
+      candidateName: candidateName,
+      testTitle: isMultiPage ? `UPSC Test Booklet (${createdPages.length} Pages)` : `UPSC Mains Answer Evaluation`,
+      date: new Date().toISOString().split('T')[0],
+      totalMarksAwarded: 0,
+      totalMaxMarks: initialTotalMarks,
+      parameters: {
+        attempts: 'Good',
+        contentQuality: 'Average',
+        structureAndFlow: 'Average',
+        presentation: 'Average',
+        language: 'Good',
+      },
+      questionWiseMarks: [],
+      overallStrengths: [],
+      overallImprovements: [],
+      overallFeedback: isMultiPage 
+        ? `Loaded ${createdPages.length}-page test booklet for ${candidateName}. The evaluator will automatically identify each question and its marks from each page header as you review.`
+        : 'Awaiting AI multi-pass evaluation...',
+    });
+
+    // Reset evaluation state
+    setEvaluation({
+      qNumber: 1,
+      marksAwarded: 0,
+      maxMarks: 10,
+      strengths: [],
+      areasForImprovement: [],
+      demandsAddressed: [],
+      conceptualErrors: [],
+      missingKeywords: [],
+      annotations: [],
+      mentorSummary: 'Initiating evaluation on candidate copy...',
+    });
+
+    // Reset intermediate audit states
+    setCachedPass1(null);
+    setCachedPass2(null);
+    setCachedPass3(null);
+    setAgentAudit({
+      agentDialogue: [
+        {
+          agent: "Agent 1: Ground Truth Verifier",
+          message: `Starting OCR verification on candidate answer copy (${candidateName})...`
+        }
+      ],
+      issuesFound: false,
+      revisionsRecommended: [],
+      consensusStatus: "AUDIT_IN_PROGRESS"
+    });
+
+    // Run multi-pass immediately passing the new page, question, and candidate!
+    setTimeout(() => {
+      handleRunMultiPass(createdPages[0], newQuestionBreakdown, candidateName);
+    }, 100);
   };
 
   return (
@@ -714,7 +925,7 @@ export default function App() {
       
       {/* Top Navbar */}
       <Navbar
-        onRunMultiPass={handleRunMultiPass}
+        onRunMultiPass={() => handleRunMultiPass()}
         isEvaluating={isEvaluating}
         onOpenPromptStudio={() => setIsPromptStudioOpen(true)}
         onOpenScorecard={() => setIsScorecardOpen(true)}
@@ -727,6 +938,14 @@ export default function App() {
         totalScore={scorecard.totalMarksAwarded}
         totalMaxMarks={scorecard.totalMaxMarks}
         currentPassStep={currentPassStep}
+        candidateName={scorecard.candidateName}
+        isCustomCopy={isCustomCopy}
+        onLoadSampleCopy={handleLoadSampleCopy}
+        onEvaluateAllPages={() => handleEvaluateAllPages()}
+        onStopBatch={handleStopBatch}
+        batchProgress={batchProgress}
+        currentPageNumber={currentPageIndex + 1}
+        totalPages={pages.length}
       />
 
       {/* Main Split Layout: Copy Viewer (Left) + Teacher Dossier (Right) */}
@@ -796,6 +1015,8 @@ export default function App() {
         isOpen={isUploadModalOpen}
         onClose={() => setIsUploadModalOpen(false)}
         onSelectSampleQuestion={handleSelectSampleQuestion}
+        onLoadSampleCopy={handleLoadSampleCopy}
+        onOpenApiSettings={() => setIsApiSettingsOpen(true)}
         apiConfig={apiConfig}
         onStartCustomEvaluation={handleStartCustomEvaluation}
       />

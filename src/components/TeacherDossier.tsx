@@ -164,11 +164,11 @@ export const TeacherDossier: React.FC<TeacherDossierProps> = ({
 
               <div className="divide-y divide-slate-800/60">
                 {[
-                  { param: 'Attempts', val: scorecard.parameters.attempts },
-                  { param: 'Content Quality', val: scorecard.parameters.contentQuality },
-                  { param: 'Structure and Flow', val: scorecard.parameters.structureAndFlow },
-                  { param: 'Presentation (Maps/Diagrams)', val: scorecard.parameters.presentation },
-                  { param: 'Language & Terminology', val: scorecard.parameters.language },
+                  { param: 'Attempts', val: scorecard?.parameters?.attempts || 'Good' },
+                  { param: 'Content Quality', val: scorecard?.parameters?.contentQuality || 'Good' },
+                  { param: 'Structure and Flow', val: scorecard?.parameters?.structureAndFlow || 'Good' },
+                  { param: 'Presentation (Maps/Diagrams)', val: scorecard?.parameters?.presentation || 'Good' },
+                  { param: 'Language & Terminology', val: scorecard?.parameters?.language || 'Good' },
                 ].map((item, idx) => (
                   <div key={idx} className="px-3 py-2 flex items-center justify-between">
                     <span className="text-slate-300">{item.param}</span>
@@ -194,12 +194,15 @@ export const TeacherDossier: React.FC<TeacherDossierProps> = ({
                   <span>Key Strengths Observed</span>
                 </div>
                 <ul className="space-y-1.5 text-[11px] text-slate-300">
-                  {scorecard.overallStrengths.map((str, idx) => (
+                  {(scorecard?.overallStrengths || []).map((str, idx) => (
                     <li key={idx} className="flex items-start space-x-1">
                       <span className="text-emerald-500 font-bold">•</span>
                       <span>{str}</span>
                     </li>
                   ))}
+                  {(scorecard?.overallStrengths || []).length === 0 && (
+                    <li className="text-slate-500 italic text-[10.5px]">Evaluation in progress...</li>
+                  )}
                 </ul>
               </div>
 
@@ -210,12 +213,15 @@ export const TeacherDossier: React.FC<TeacherDossierProps> = ({
                   <span>Areas for Improvement</span>
                 </div>
                 <ul className="space-y-1.5 text-[11px] text-slate-300">
-                  {scorecard.overallImprovements.map((imp, idx) => (
+                  {(scorecard?.overallImprovements || []).map((imp, idx) => (
                     <li key={idx} className="flex items-start space-x-1">
                       <span className="text-red-500 font-bold">•</span>
                       <span>{imp}</span>
                     </li>
                   ))}
+                  {(scorecard?.overallImprovements || []).length === 0 && (
+                    <li className="text-slate-500 italic text-[10.5px]">Evaluation in progress...</li>
+                  )}
                 </ul>
               </div>
 
@@ -228,7 +234,7 @@ export const TeacherDossier: React.FC<TeacherDossierProps> = ({
                 Senior Evaluator's Overall Feedback:
               </span>
               <p className="text-xs text-slate-300 leading-relaxed font-serif italic">
-                "{scorecard.overallFeedback}"
+                "{scorecard?.overallFeedback || 'Evaluation awaiting multi-pass execution.'}"
               </p>
             </div>
 
@@ -238,7 +244,7 @@ export const TeacherDossier: React.FC<TeacherDossierProps> = ({
                 Question Wise Marks Breakdown
               </div>
               <div className="divide-y divide-slate-800/40 text-[11px]">
-                {scorecard.questionWiseMarks.map((q) => (
+                {(scorecard?.questionWiseMarks || []).map((q) => (
                   <div key={q.qNumber} className="px-3 py-2 flex items-center justify-between hover:bg-slate-900/50">
                     <div className="flex items-center space-x-2">
                       <span className="font-bold font-mono text-slate-300 w-6">Q{q.qNumber}</span>
@@ -249,6 +255,11 @@ export const TeacherDossier: React.FC<TeacherDossierProps> = ({
                     </span>
                   </div>
                 ))}
+                {(scorecard?.questionWiseMarks || []).length === 0 && (
+                  <div className="p-3 text-slate-500 text-center italic text-[10.5px]">
+                    No question marks recorded yet. Marks will populate as each question is evaluated.
+                  </div>
+                )}
               </div>
             </div>
 
@@ -479,12 +490,15 @@ export const TeacherDossier: React.FC<TeacherDossierProps> = ({
                       What's Right (Strengths):
                     </span>
                     <ul className="space-y-1 text-[11px] text-slate-300">
-                      {evaluation?.strengths.map((s, idx) => (
+                      {(evaluation?.strengths || []).map((s, idx) => (
                         <li key={idx} className="flex items-start space-x-1">
                           <Check className="w-3 h-3 text-emerald-400 mt-0.5 flex-shrink-0" />
                           <span>{s}</span>
                         </li>
                       ))}
+                      {(evaluation?.strengths || []).length === 0 && (
+                        <li className="text-slate-500 italic text-[10px]">Pending Pass 2 audit...</li>
+                      )}
                     </ul>
                   </div>
 
@@ -494,12 +508,15 @@ export const TeacherDossier: React.FC<TeacherDossierProps> = ({
                       What's Wrong (Factual & Conceptual Errors):
                     </span>
                     <ul className="space-y-1 text-[11px] text-slate-300">
-                      {evaluation?.conceptualErrors.map((err, idx) => (
+                      {(evaluation?.conceptualErrors || []).map((err, idx) => (
                         <li key={idx} className="flex items-start space-x-1 text-red-300">
                           <XCircle className="w-3 h-3 text-red-400 mt-0.5 flex-shrink-0" />
                           <span>{err}</span>
                         </li>
                       ))}
+                      {(evaluation?.conceptualErrors || []).length === 0 && (
+                        <li className="text-slate-500 italic text-[10px]">No major conceptual errors flagged.</li>
+                      )}
                     </ul>
                   </div>
 
@@ -509,11 +526,14 @@ export const TeacherDossier: React.FC<TeacherDossierProps> = ({
                       Missing UPSC Keywords & Theories:
                     </span>
                     <div className="flex flex-wrap gap-1">
-                      {evaluation?.missingKeywords.map((kw, idx) => (
+                      {(evaluation?.missingKeywords || []).map((kw, idx) => (
                         <span key={idx} className="px-1.5 py-0.5 rounded bg-amber-950/60 text-amber-300 border border-amber-800/40 text-[10px] font-mono">
                           + {kw}
                         </span>
                       ))}
+                      {(evaluation?.missingKeywords || []).length === 0 && (
+                        <span className="text-slate-500 italic text-[10px]">Pending Pass 2 keyword extraction.</span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -759,7 +779,7 @@ export const TeacherDossier: React.FC<TeacherDossierProps> = ({
                     Core Question Demands & Weightage
                   </div>
                   <div className="divide-y divide-slate-800/40 text-[11px]">
-                    {currentQuestion.subDemands.map((sd) => (
+                    {(currentQuestion.subDemands || []).map((sd) => (
                       <div key={sd.id} className="p-3 space-y-1">
                         <div className="flex items-center justify-between">
                           <span className="font-bold text-slate-200">{sd.title}</span>
@@ -770,6 +790,11 @@ export const TeacherDossier: React.FC<TeacherDossierProps> = ({
                         <p className="text-slate-400 leading-relaxed">{sd.description}</p>
                       </div>
                     ))}
+                    {(currentQuestion.subDemands || []).length === 0 && (
+                      <div className="p-3 text-slate-500 italic text-[10.5px]">
+                        Standard UPSC question demands applied.
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -779,19 +804,22 @@ export const TeacherDossier: React.FC<TeacherDossierProps> = ({
                     UPSC Standard Model Answer Synopsis:
                   </span>
                   <p className="text-slate-300 leading-relaxed font-serif italic text-[11.5px]">
-                    {currentQuestion.modelAnswerSummary}
+                    {currentQuestion.modelAnswerSummary || 'Model answer synopsis not provided.'}
                   </p>
                   <div className="pt-2 border-t border-slate-800 space-y-1.5">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
                       Indispensable Dimensions:
                     </span>
                     <ul className="space-y-1.5 text-slate-300 text-[11px]">
-                      {currentQuestion.modelAnswerKeyPoints.map((pt, idx) => (
+                      {(currentQuestion.modelAnswerKeyPoints || []).map((pt, idx) => (
                         <li key={idx} className="flex items-start space-x-1.5">
                           <span className="text-red-400 font-bold">•</span>
                           <span>{pt}</span>
                         </li>
                       ))}
+                      {(currentQuestion.modelAnswerKeyPoints || []).length === 0 && (
+                        <li className="text-slate-500 italic text-[10.5px]">No key points specified.</li>
+                      )}
                     </ul>
                   </div>
                 </div>
@@ -851,10 +879,10 @@ export const TeacherDossier: React.FC<TeacherDossierProps> = ({
             {/* "What NOT to do" (Negative Constraints) */}
             <div>
               <label className="block text-[11px] font-bold text-red-400 mb-1 flex items-center justify-between">
-                <span>"What NOT to do" Negative Constraints ({promptSettings.negativeConstraints.length}):</span>
+                <span>"What NOT to do" Negative Constraints ({(promptSettings?.negativeConstraints || []).length}):</span>
               </label>
               <div className="space-y-1.5 max-h-56 overflow-y-auto p-2 bg-slate-950 rounded-lg border border-slate-800">
-                {promptSettings.negativeConstraints.map((constraint, idx) => (
+                {(promptSettings?.negativeConstraints || []).map((constraint, idx) => (
                   <div key={idx} className="flex items-start justify-between p-1.5 rounded hover:bg-slate-900 text-[11px] text-slate-300">
                     <span className="flex items-start space-x-1.5">
                       <span className="text-red-500 font-bold">✗</span>
@@ -871,7 +899,7 @@ export const TeacherDossier: React.FC<TeacherDossierProps> = ({
                 Custom Feedback Directives:
               </label>
               <div className="space-y-1.5 max-h-48 overflow-y-auto p-2 bg-slate-950 rounded-lg border border-slate-800">
-                {promptSettings.customDirectives.map((dir, idx) => (
+                {(promptSettings?.customDirectives || []).map((dir, idx) => (
                   <div key={idx} className="flex items-start space-x-1.5 text-[11px] text-slate-300 p-1">
                     <span className="text-amber-400 font-bold">→</span>
                     <span>{dir}</span>

@@ -123,11 +123,11 @@ export const ScorecardModal: React.FC<ScorecardModalProps> = ({
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
                   {[
-                    { label: 'Attempts', val: scorecard.parameters.attempts },
-                    { label: 'Content Quality', val: scorecard.parameters.contentQuality },
-                    { label: 'Structure and Flow', val: scorecard.parameters.structureAndFlow },
-                    { label: 'Presentation (Diagrams/Maps)', val: scorecard.parameters.presentation },
-                    { label: 'Language & Terminology', val: scorecard.parameters.language },
+                    { label: 'Attempts', val: scorecard?.parameters?.attempts || 'Good' },
+                    { label: 'Content Quality', val: scorecard?.parameters?.contentQuality || 'Good' },
+                    { label: 'Structure and Flow', val: scorecard?.parameters?.structureAndFlow || 'Good' },
+                    { label: 'Presentation (Diagrams/Maps)', val: scorecard?.parameters?.presentation || 'Good' },
+                    { label: 'Language & Terminology', val: scorecard?.parameters?.language || 'Good' },
                   ].map((row, idx) => (
                     <tr key={idx} className="hover:bg-slate-900/40">
                       <td className="p-3 font-medium text-slate-300">{row.label}</td>
@@ -150,10 +150,10 @@ export const ScorecardModal: React.FC<ScorecardModalProps> = ({
           {/* Question-Wise Score Breakdown Grid */}
           <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-950/60 font-sans">
             <div className="px-4 py-2.5 bg-slate-800/60 border-b border-slate-800 font-serif font-bold text-xs text-slate-200">
-              Question-Wise Marks Breakdown (10 Questions Attempted)
+              Question-Wise Marks Breakdown
             </div>
             <div className="p-3 grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
-              {scorecard.questionWiseMarks.map((q) => (
+              {(scorecard?.questionWiseMarks || []).map((q) => (
                 <div key={q.qNumber} className="p-2.5 rounded-lg bg-slate-900 border border-slate-800 flex flex-col justify-between">
                   <div className="flex items-center justify-between mb-1">
                     <span className="font-bold text-slate-300">Question {q.qNumber}</span>
@@ -164,6 +164,11 @@ export const ScorecardModal: React.FC<ScorecardModalProps> = ({
                   </div>
                 </div>
               ))}
+              {(scorecard?.questionWiseMarks || []).length === 0 && (
+                <div className="col-span-full p-3 text-center text-slate-500 italic text-xs">
+                  No individual question marks recorded yet.
+                </div>
+              )}
             </div>
           </div>
 
@@ -177,12 +182,15 @@ export const ScorecardModal: React.FC<ScorecardModalProps> = ({
                 <span>Strengths Noted by Mentor</span>
               </div>
               <ul className="space-y-2 text-slate-300 text-[11.5px]">
-                {scorecard.overallStrengths.map((str, idx) => (
+                {(scorecard?.overallStrengths || []).map((str, idx) => (
                   <li key={idx} className="flex items-start space-x-2">
                     <span className="text-emerald-500 font-bold">•</span>
                     <span>{str}</span>
                   </li>
                 ))}
+                {(scorecard?.overallStrengths || []).length === 0 && (
+                  <li className="text-slate-500 italic">Strengths will be recorded upon evaluation.</li>
+                )}
               </ul>
             </div>
 
@@ -193,12 +201,15 @@ export const ScorecardModal: React.FC<ScorecardModalProps> = ({
                 <span>Critical Areas for Improvement</span>
               </div>
               <ul className="space-y-2 text-slate-300 text-[11.5px]">
-                {scorecard.overallImprovements.map((imp, idx) => (
+                {(scorecard?.overallImprovements || []).map((imp, idx) => (
                   <li key={idx} className="flex items-start space-x-2">
                     <span className="text-red-500 font-bold">•</span>
                     <span>{imp}</span>
                   </li>
                 ))}
+                {(scorecard?.overallImprovements || []).length === 0 && (
+                  <li className="text-slate-500 italic">Improvement areas will be recorded upon evaluation.</li>
+                )}
               </ul>
             </div>
 

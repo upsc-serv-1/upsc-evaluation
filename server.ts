@@ -117,6 +117,9 @@ async function generateAiJson(params: {
 
   // 2. NATIVE GOOGLE GEMINI WORKFLOW
   const geminiKey = apiConfig?.apiKey?.trim() || process.env.GEMINI_API_KEY;
+  if (!geminiKey || geminiKey === 'MY_GEMINI_API_KEY') {
+    throw new Error('Gemini API Key is required. Please enter your API key in the top-bar "API / Model" settings modal or set GEMINI_API_KEY in your .env file.');
+  }
   const geminiBaseUrl = apiConfig?.baseUrl?.trim() || process.env.GEMINI_BASE_URL;
 
   const clientOptions: any = {
@@ -276,16 +279,16 @@ Return pure JSON.`;
     try {
       const { questionText, studentContent, imageBase64, apiConfig } = req.body;
 
-      const promptText = `You are a strict UPSC Mains copy evaluator performing PASS 1: TRANSCRIPTION & CONTENT EXTRACTION.
-Your goal is to extract what the student ACTUALLY wrote without judging yet. Do NOT hallucinate points that are absent.
+      const promptText = `You are an expert UPSC Mains copy evaluator performing PASS 1: TRANSCRIPTION & CONTENT EXTRACTION.
+Your goal is to extract what is printed on this UPSC booklet page and what the student ACTUALLY wrote:
 
-Question:
-"${questionText || 'Not specified'}"
+1. Printed Question Detection:
+Look at the top of the booklet page for the printed UPSC question box:
+- "detectedQuestion": (string) If this page starts a question, extract the full printed question text including question number, directives, and marks (e.g. "Q1. Explain the mechanism of Jet Streams... (10 Marks / 150 Words)"). If this is a continuation page without a printed question header, return empty string "".
+- "detectedQuestionNumber": (number) The integer question number printed (e.g. 1, 2, 3...) or 0 if not present.
+- "detectedMaxMarks": (number) The marks printed for this question (e.g. 10, 15, or 20) or 0 if not specified.
 
-Student handwritten response (or refer to image):
-"${studentContent || 'Please extract from image'}"
-
-Provide a structured JSON breakdown with the following keys:
+2. Student Handwritten Response:
 - "extractedText": (string) line by line transcription of student's answer.
 - "headingsIdentified": (array of strings) list of main headings/underlined sections written by student.
 - "bulletPoints": (array of strings) list of points student formulated.
@@ -295,6 +298,9 @@ Provide a structured JSON breakdown with the following keys:
       const schema = {
         type: Type.OBJECT,
         properties: {
+          detectedQuestion: { type: Type.STRING },
+          detectedQuestionNumber: { type: Type.NUMBER },
+          detectedMaxMarks: { type: Type.NUMBER },
           extractedText: { type: Type.STRING },
           headingsIdentified: { type: Type.ARRAY, items: { type: Type.STRING } },
           bulletPoints: { type: Type.ARRAY, items: { type: Type.STRING } },

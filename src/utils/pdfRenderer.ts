@@ -3,10 +3,11 @@
  * and extract text content using PDF.js.
  */
 import * as pdfjsLib from 'pdfjs-dist';
+import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
-// Configure worker using CDN
-if (typeof window !== 'undefined' && 'Worker' in window) {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+// Configure worker using local Vite bundled URL
+if (typeof window !== 'undefined') {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 }
 
 export interface RenderedPdfPage {
@@ -26,7 +27,12 @@ export async function convertPdfToImages(file: File): Promise<RenderedPdfPage[]>
 
 export async function parsePdfComplete(file: File): Promise<ParsedPdfResult> {
   const arrayBuffer = await file.arrayBuffer();
-  const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+  const loadingTask = pdfjsLib.getDocument({ 
+    data: new Uint8Array(arrayBuffer),
+    useWorkerFetch: true,
+    isEvalSupported: false,
+    useSystemFonts: true,
+  });
   const pdf = await loadingTask.promise;
   const pages: RenderedPdfPage[] = [];
   const textPieces: string[] = [];
@@ -40,6 +46,10 @@ export async function parsePdfComplete(file: File): Promise<ParsedPdfResult> {
     if (context) {
       canvas.height = viewport.height;
       canvas.width = viewport.width;
+
+      // Fill canvas background with crisp white to prevent transparent/black artifacts in JPEG
+      context.fillStyle = '#ffffff';
+      context.fillRect(0, 0, canvas.width, canvas.height);
 
       const renderContext = {
         canvasContext: context,
@@ -68,6 +78,10 @@ export async function parsePdfComplete(file: File): Promise<ParsedPdfResult> {
   }
 
   return {
+    pages,
+    extractedText: textPieces.join('\n\n'),
+  };
+}
     pages,
     extractedText: textPieces.join('\n\n'),
   };

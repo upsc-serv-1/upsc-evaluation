@@ -20,8 +20,11 @@ interface UploadModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSelectSampleQuestion: (qNumber: number) => void;
+  onLoadSampleCopy?: () => void;
+  onOpenApiSettings?: () => void;
   apiConfig: ApiConnectionConfig;
   onStartCustomEvaluation: (payload: {
+    candidateName?: string;
     questionText: string;
     maxMarks: number;
     modelAnswer: string;
@@ -35,6 +38,8 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   isOpen,
   onClose,
   onSelectSampleQuestion,
+  onLoadSampleCopy,
+  onOpenApiSettings,
   apiConfig,
   onStartCustomEvaluation,
 }) => {
@@ -51,12 +56,14 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   const [modelAnswerText, setModelAnswerText] = useState<string>('');
   const [isProcessingModel, setIsProcessingModel] = useState<boolean>(false);
 
-  // Auto-Detected / Extracted Fields (AI populates these instantly)
+  // Auto-Detected / Extracted Fields (Editable by user)
+  const [detectedCandidateName, setDetectedCandidateName] = useState<string>('');
   const [detectedQuestion, setDetectedQuestion] = useState<string>('');
   const [detectedMaxMarks, setDetectedMaxMarks] = useState<number>(10);
   const [modelSummary, setModelSummary] = useState<string>('');
   const [isAutoParsing, setIsAutoParsing] = useState<boolean>(false);
   const [autoParseDone, setAutoParseDone] = useState<boolean>(false);
+  const [showManualOverride, setShowManualOverride] = useState<boolean>(false);
 
   if (!isOpen) return null;
 
@@ -67,6 +74,12 @@ export const UploadModal: React.FC<UploadModalProps> = ({
 
     setCopyFile(file);
     setIsProcessingCopy(true);
+
+    // Set fallback candidate name from file name if empty
+    const cleanFileName = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
+    if (!detectedCandidateName) {
+      setDetectedCandidateName(cleanFileName);
+    }
 
     try {
       if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
@@ -115,6 +128,9 @@ export const UploadModal: React.FC<UploadModalProps> = ({
         }
         if (data.data.maxMarks) {
           setDetectedMaxMarks(data.data.maxMarks);
+        }
+        if (data.data.candidateName && data.data.candidateName !== 'UPSC Candidate') {
+          setDetectedCandidateName(data.data.candidateName);
         }
         setAutoParseDone(true);
       }
@@ -176,12 +192,14 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   const handleStartEvaluation = () => {
     if (copyPages.length === 0) return;
 
-    const finalQuestion = detectedQuestion.trim() || "UPSC Mains Question (Extracted from Booklet)";
+    const isMultiPage = copyPages.length > 1;
+    const finalQuestion = detectedQuestion.trim() || (isMultiPage ? "UPSC Mains Test Copy Booklet" : "UPSC Mains Question");
     const finalModel = modelSummary.trim() || modelAnswerText.trim() || "Use standard UPSC CSE Mains syllabus knowledge for this question.";
 
     onStartCustomEvaluation({
+      candidateName: detectedCandidateName.trim() || 'Candidate Copy',
       questionText: finalQuestion,
-      maxMarks: detectedMaxMarks || 10,
+      maxMarks: isMultiPage ? 250 : (detectedMaxMarks || 10),
       modelAnswer: finalModel,
       studentContent: copyRawText || "Original candidate handwritten response.",
       imageBase64: copyPages[0]?.dataUrl,
@@ -381,38 +399,134 @@ export const UploadModal: React.FC<UploadModalProps> = ({
 
               </div>
 
-              {/* AUTOMATICALLY DETECTED QUESTION & DETAILS (READ-ONLY CONFIRMATION) */}
-              {(isAutoParsing || autoParseDone || detectedQuestion) && (
-                <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2">
-                  <div className="flex items-center justify-between">
+              {/* API KEY WARNING IF NOT SET */}
+              {!apiConfig.apiKey && (
+                <div className="p-3 rounded-xl bg-amber-950/40 border border-amber-800/60 flex items-center justify-between text-[11px] text-amber-200">
+                  <div className="flex items-center space-x-2">
+                    <HelpCircle className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                    <span>Gemini API Key is not set. You can set it in API Settings or type the question manually below.</span>
+                  </div>
+                  {onOpenApiSettings && (
+                    <button
+                      onClick={onOpenApiSettings}
+                      className="px-2 py-1 rounded bg-amber-800/80 hover:bg-amber-700 text-white font-medium text-[10px] ml-2 flex-shrink-0"
+                    >
+                      Set API Key
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* AUTOMATICALLY DETECTED / EDITABLE COPY DETAILS */}
+              {copyFile && (
+                <div className="p-4 rounded-xl bg-slate-950/90 border border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
                     <span className="font-bold text-xs text-amber-300 flex items-center space-x-1.5">
                       {isAutoParsing ? (
                         <>
                           <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
-                          <span>AI Reading Question from Scanned Booklet...</span>
+                          <span>AI Reading Booklet Information...</span>
                         </>
                       ) : (
                         <>
                           <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>Automatically Detected from Booklet:</span>
+                          <span>Candidate & Test Copy Information:</span>
                         </>
                       )}
                     </span>
                     <span className="px-2 py-0.5 rounded bg-slate-800 font-mono text-[10px] text-slate-300 border border-slate-700">
-                      {detectedMaxMarks} Marks
+                      {copyPages.length} Page{copyPages.length > 1 ? 's' : ''} Loaded
                     </span>
                   </div>
 
-                  <p className="font-serif italic text-slate-200 text-xs bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
-                    "{detectedQuestion || 'Scanning question header from booklet page...'}"
-                  </p>
+                  {/* Candidate Name Input */}
+                  <div>
+                    <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">
+                      Candidate Name:
+                    </label>
+                    <input
+                      type="text"
+                      value={detectedCandidateName}
+                      onChange={(e) => setDetectedCandidateName(e.target.value)}
+                      placeholder="e.g. UPSC Aspirant / Student Name"
+                      className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-slate-100 text-xs focus:outline-none focus:border-red-500 font-medium"
+                    />
+                  </div>
 
+                  {/* Multi-Page Full Test Copy Mode Banner */}
+                  {copyPages.length > 1 ? (
+                    <div className="p-3 rounded-lg bg-slate-900/80 border border-slate-800 space-y-1.5 text-[11px]">
+                      <div className="flex items-center space-x-2 text-emerald-400 font-semibold">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Full Test Booklet (Multi-Question Evaluation)</span>
+                      </div>
+                      <p className="text-slate-300 text-[11px] leading-relaxed">
+                        This test copy contains multiple questions with varying marks (10M / 15M / 20M). 
+                        Zero manual typing needed: The AI reads each printed question and its respective marks directly from each page's header as you grade through the copy.
+                      </p>
+                      
+                      <div className="pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setShowManualOverride(!showManualOverride)}
+                          className="text-[10px] text-slate-400 hover:text-slate-200 underline decoration-slate-600"
+                        >
+                          {showManualOverride ? '▲ Hide manual question override' : '▼ Need to manually set Question 1 details? (Optional)'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {/* Optional / Single Question Override Fields */}
+                  {(copyPages.length <= 1 || showManualOverride) && (
+                    <div className="pt-2 border-t border-slate-800/80 space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">
+                            Question Number / Marks:
+                          </label>
+                          <div className="flex items-center space-x-2">
+                            {[10, 15, 20].map((m) => (
+                              <button
+                                key={m}
+                                type="button"
+                                onClick={() => setDetectedMaxMarks(m)}
+                                className={`flex-1 py-1.5 rounded-lg text-xs font-mono font-bold transition-all border ${
+                                  detectedMaxMarks === m
+                                    ? 'bg-red-950 border-red-500 text-red-300 shadow-sm'
+                                    : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-slate-200'
+                                }`}
+                              >
+                                {m} Marks
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Question Text */}
+                      <div>
+                        <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">
+                          Question 1 Text (Optional manual override):
+                        </label>
+                        <textarea
+                          value={detectedQuestion}
+                          onChange={(e) => setDetectedQuestion(e.target.value)}
+                          rows={2}
+                          placeholder="Question extracted automatically from copy, or type manually..."
+                          className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-slate-100 font-serif text-xs focus:outline-none focus:border-red-500 resize-none leading-relaxed"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Model Answer / Rubric Notes (Optional) */}
                   {modelSummary && (
-                    <div className="pt-1">
-                      <span className="text-[10px] font-bold text-blue-400 block mb-0.5">
-                        Model Answer Dimensions Extracted:
-                      </span>
-                      <p className="text-[11px] text-slate-400 line-clamp-2">
+                    <div className="p-2.5 rounded-lg bg-blue-950/30 border border-blue-900/40">
+                      <label className="text-[10px] font-semibold text-blue-300 uppercase tracking-wider block mb-0.5">
+                        Model Answer Dimensions Loaded:
+                      </label>
+                      <p className="text-[11px] text-slate-300 line-clamp-2">
                         {modelSummary}
                       </p>
                     </div>
@@ -438,7 +552,11 @@ export const UploadModal: React.FC<UploadModalProps> = ({
                   className="px-6 py-2.5 rounded-lg bg-red-600 hover:bg-red-500 text-xs font-bold text-white shadow-lg flex items-center space-x-2 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                 >
                   <Sparkles className="w-4 h-4 text-amber-300" />
-                  <span>Start 4-Pass AI Evaluation Now</span>
+                  <span>
+                    {copyPages.length > 1
+                      ? `Start Evaluating Test Booklet (${copyPages.length} Pages)`
+                      : 'Start 4-Pass AI Evaluation'}
+                  </span>
                   <ArrowRight className="w-3.5 h-3.5 ml-1" />
                 </button>
               </div>
@@ -448,9 +566,27 @@ export const UploadModal: React.FC<UploadModalProps> = ({
 
           {/* TAB 2: EXPLORE SAMPLE COPIES */}
           {activeTab === 'samples' && (
-            <div className="space-y-3">
+            <div className="space-y-4">
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
+                <div>
+                  <p className="font-bold text-slate-200 text-xs">Reset to Manas Arora Sample Booklet</p>
+                  <p className="text-[11px] text-slate-400">Restore the 10 pre-loaded questions & evaluated pages</p>
+                </div>
+                {onLoadSampleCopy && (
+                  <button
+                    onClick={() => {
+                      onLoadSampleCopy();
+                      onClose();
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-red-700 hover:bg-red-600 text-white font-semibold text-xs transition-all shadow-sm"
+                  >
+                    Load Sample Booklet
+                  </button>
+                )}
+              </div>
+
               <p className="text-slate-400 text-xs">
-                Select an authentic UPSC answer copy from the LevelUp Mentorship Program (LMP):
+                Or jump directly to an authentic question from the LevelUp Mentorship Program (LMP):
               </p>
 
               <div className="space-y-2">

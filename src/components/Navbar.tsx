@@ -28,6 +28,14 @@ interface NavbarProps {
   totalScore: number;
   totalMaxMarks: number;
   currentPassStep: number;
+  candidateName?: string;
+  isCustomCopy?: boolean;
+  onLoadSampleCopy?: () => void;
+  onEvaluateAllPages?: () => void;
+  onStopBatch?: () => void;
+  batchProgress?: { isRunning: boolean; currentPage: number; totalPages: number };
+  currentPageNumber?: number;
+  totalPages?: number;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -43,7 +51,14 @@ export const Navbar: React.FC<NavbarProps> = ({
   apiConfig,
   totalScore,
   totalMaxMarks,
-  currentPassStep,
+  candidateName,
+  isCustomCopy,
+  onLoadSampleCopy,
+  onEvaluateAllPages,
+  onStopBatch,
+  batchProgress,
+  currentPageNumber,
+  totalPages,
 }) => {
   return (
     <header className="bg-slate-900 border-b border-slate-800 text-white sticky top-0 z-30 shadow-md">
@@ -59,21 +74,21 @@ export const Navbar: React.FC<NavbarProps> = ({
               <h1 className="font-serif font-bold text-base tracking-wide text-slate-100">
                 UPSC Test Copy Evaluator
               </h1>
-              <span className="hidden sm:inline-block px-2 py-0.5 text-xs font-medium rounded-full bg-red-950/60 text-red-300 border border-red-800/60">
-                Human Teacher Margin Annotator
+              <span className="hidden sm:inline-block px-2 py-0.5 text-xs font-semibold rounded-full bg-red-950/60 text-red-300 border border-red-800/60">
+                {candidateName ? `Candidate: ${candidateName}` : 'Human Teacher Margin Annotator'}
               </span>
             </div>
             <div className="flex items-center space-x-2 text-xs text-slate-400">
               <span className="flex items-center">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 mr-1.5 animate-pulse" />
-                {apiConfig.provider === 'openai_compatible' ? 'OpenAI / Custom LLM' : 'Gemini'} ({apiConfig.model})
+                {apiConfig?.provider === 'openai_compatible' ? 'OpenAI / Custom LLM' : 'Gemini'} ({apiConfig?.model || 'gemini-2.5-flash'})
               </span>
               <span>•</span>
               <button 
                 onClick={onOpenPromptStudio}
                 className="hover:text-red-300 transition-colors flex items-center underline decoration-slate-600 underline-offset-2"
               >
-                {promptSettings.personaName}
+                {promptSettings?.personaName || 'Evaluator'}
               </button>
             </div>
           </div>
@@ -91,7 +106,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             <Award className="w-4 h-4 text-amber-400" />
             <span className="text-slate-300">Marks:</span>
             <span className="font-bold text-red-400 text-sm font-mono">
-              {totalScore} / {totalMaxMarks}
+              {totalScore ?? 0} / {totalMaxMarks ?? 250}
             </span>
           </button>
 
@@ -99,7 +114,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           <button
             onClick={onOpenApiSettings}
             className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
-              apiConfig.apiKey || apiConfig.baseUrl || apiConfig.provider === 'openai_compatible'
+              apiConfig?.apiKey || apiConfig?.baseUrl || apiConfig?.provider === 'openai_compatible'
                 ? 'bg-amber-950/70 border-amber-500/60 text-amber-300'
                 : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
             }`}
@@ -107,7 +122,9 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <Key className="w-3.5 h-3.5 text-amber-400" />
             <span className="hidden sm:inline font-mono">
-              {apiConfig.provider === 'openai_compatible' ? `OpenAI (${apiConfig.model})` : apiConfig.model.replace('gemini-', '')}
+              {apiConfig?.provider === 'openai_compatible' 
+                ? `OpenAI (${apiConfig?.model || 'gpt-4o'})` 
+                : (apiConfig?.model || 'gemini-2.5-flash').replace('gemini-', '')}
             </span>
           </button>
 
@@ -118,8 +135,20 @@ export const Navbar: React.FC<NavbarProps> = ({
             title="Upload Student Copy PDF & Model Answer PDF (Zero typing needed)"
           >
             <Upload className="w-3.5 h-3.5 text-red-400" />
-            <span className="hidden sm:inline">Upload PDFs (Auto-Evaluate)</span>
+            <span className="hidden sm:inline">Upload Copy PDF</span>
           </button>
+
+          {/* Switch back to sample copy button */}
+          {isCustomCopy && onLoadSampleCopy && (
+            <button
+              onClick={onLoadSampleCopy}
+              className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium border border-slate-700 transition-colors"
+              title="Switch back to Manas Arora Sample Booklet"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
+              <span className="hidden md:inline">Sample Copy (Manas)</span>
+            </button>
+          )}
 
           {/* Prompt & What Not To Do Studio */}
           <button
@@ -131,19 +160,51 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="hidden md:inline">Prompts & "Not to do" Rules</span>
           </button>
 
-          {/* Run Multi-Pass Evaluation */}
-          <button
-            onClick={onRunMultiPass}
-            disabled={isEvaluating}
-            className={`flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold shadow-sm transition-all ${
-              isEvaluating
-                ? 'bg-amber-600 text-white cursor-wait opacity-90'
-                : 'bg-red-600 hover:bg-red-500 text-white hover:shadow-red-600/30'
-            }`}
-          >
-            <Sparkles className={`w-3.5 h-3.5 ${isEvaluating ? 'animate-spin' : ''}`} />
-            <span>{isEvaluating ? `Running Pass ${currentPassStep}/4...` : 'Run 4-Pass AI Evaluation'}</span>
-          </button>
+          {/* Evaluation Controls: Current Page & Batch All Pages */}
+          {batchProgress?.isRunning ? (
+            <div className="flex items-center space-x-2 bg-amber-950/80 border border-amber-500/60 rounded-lg px-3 py-1.5 text-xs text-amber-200">
+              <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-spin" />
+              <span>Evaluating Page {batchProgress.currentPage} of {batchProgress.totalPages}...</span>
+              {onStopBatch && (
+                <button
+                  onClick={onStopBatch}
+                  className="ml-1.5 px-2 py-0.5 rounded bg-red-700 hover:bg-red-600 text-white font-bold text-[10px]"
+                >
+                  Stop
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center space-x-1.5">
+              {/* Evaluate Current Page Button */}
+              <button
+                onClick={onRunMultiPass}
+                disabled={isEvaluating}
+                className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold shadow-sm transition-all ${
+                  isEvaluating
+                    ? 'bg-amber-600 text-white cursor-wait opacity-90'
+                    : 'bg-red-600 hover:bg-red-500 text-white hover:shadow-red-600/30'
+                }`}
+                title="Run 4-Pass AI evaluation on the active page"
+              >
+                <Sparkles className={`w-3.5 h-3.5 ${isEvaluating ? 'animate-spin' : ''}`} />
+                <span>{isEvaluating ? `Pass ${currentPassStep}/4...` : `Evaluate Page ${currentPageNumber || 1}`}</span>
+              </button>
+
+              {/* Evaluate All Pages Button (for multi-page booklets) */}
+              {onEvaluateAllPages && (totalPages || 0) > 1 && (
+                <button
+                  onClick={onEvaluateAllPages}
+                  disabled={isEvaluating}
+                  className="hidden sm:flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-all shadow-xs"
+                  title="Automatically evaluate all pages across the full test booklet"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Evaluate All ({totalPages} Pages)</span>
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Export Annotated PDF (Standard ISO FreeText Annotations) */}
           <button
